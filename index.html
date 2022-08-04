@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link href="css/bootstrap.css" rel="stylesheet">
+    <script src="js/bootstrap.bundle.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="js/jquery-ui/jquery-ui.min.js"></script>
+    <link href="js/jquery-ui/jquery-ui.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <title>BX24 - ZAE</title>
+    <script src="js/CookieGetter.js"></script>
+    <link rel="icon" href="bitrix24logo.jpg">
+    <script>
+        var tickets = []
+        var counter = 0
+        var limit = 1000
+        function nextWeek(current) {
+
+        }
+
+        function beforeWeek(current) {
+
+        }
+
+        function thisWeek(current) {
+            
+        }
+        function next(next) {
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.list"
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("POST", url);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            let json = {
+                "order": {CHANGED_DATE:'asc'},
+                "start" : next
+            }
+            json = JSON.stringify(json)
+            xhttp.send(json);
+            xhttp.onload = function () {
+                let result = JSON.parse(this.responseText)
+                for (ticket of result.result.tasks) {
+                    tickets.push(ticket)
+                }
+                counter = result.next;
+                limit = result.total;
+            }
+        }
+        function setGeneralInformation() {
+            thisWeek()
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/user.get.json?ID=" + getCookie("bx24_user_id")
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("GET", url);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            xhttp.send();
+            xhttp.onload = function () {
+                let result = JSON.parse(this.responseText)
+                document.getElementById("bx24display_name").innerHTML = result.result[0].NAME + " "+ result.result[0].LAST_NAME
+                let firstDayOfWeek = getFirstDayOfWeek(new Date())
+                let lastDayOfWeek = getLastDayOfWeek(new Date())
+                document.getElementById("calendarWeek").innerHTML = "Kalendarwoche " + getCalendarWeek(new Date()) + " | " + firstDayOfWeek.getDay() + "." + (firstDayOfWeek.getMonth()+1) + "." + firstDayOfWeek.getFullYear() + " - " + lastDayOfWeek.getDay() + "." + (lastDayOfWeek.getMonth()+1) + "." + lastDayOfWeek.getFullYear();
+            }
+        }
+        $(document).ready(function () {
+            $("#main-view").hide();
+            $.fn.button.noConflict()
+            let apiToken = getCookie("bx24_api_token");
+            let userId = getCookie("bx24_user_id");
+            if (userId == null || apiToken == null) {
+                $("#login").hide()
+                login()
+            } else {
+                $("#login").hide()
+                validate()
+            }
+            $("#taskSearch").on('input', function () {
+                let query = document.getElementById("taskSearchId").value;
+                let onlyActive = document.getElementById("taskSearchOnlyActive").checked
+                let onlyExecutor = document.getElementById("executorOnly").checked
+                setSearchTasks(query, onlyExecutor, onlyActive)
+            });
+        })
+        function validate() {
+            let token = getCookie("bx24_api_token");
+            let id = getCookie("bx24_user_id");
+            var url = "https://crm.cms-sudhaus.de/rest/11/" + token + "/user.get.json?ID=" + id
+            var xhttp = new XMLHttpRequest();
+            xhttp.open("GET", url)
+            xhttp.setRequestHeader("Content-Type", "application/json")
+            xhttp.send();
+            xhttp.onreadystatechange = function () {
+                let valid = this.status !== 401
+                if(valid === false) {
+
+                    document.cookie = "bx24_user_id" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                    document.cookie = "bx24_api_token" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                    login()
+                } else {
+                    $("#main-view").show();
+                    setGeneralInformation();
+                    setRecommendedTasks()
+                    setSearchTasks("", false, false)
+                }
+            }
+        }
+        function login() {
+            $("#login").dialog({
+                show : true,
+            })
+        }
+        function loginSubmit() {
+            let token = document.getElementById("token").value;
+            let id = document.getElementById("userId").value;
+            $("#login").dialog("close")
+            var url = "https://crm.cms-sudhaus.de/rest/11/" + token + "/user.get.json?ID=" + id
+            var xhttp = new XMLHttpRequest();
+            xhttp.open("GET", url)
+            xhttp.setRequestHeader("Content-Type", "application/json")
+            xhttp.send();
+            xhttp.onreadystatechange = function () {
+                let valid = this.status !== 401
+                if(valid) {
+                    let date = new Date();
+                    date.setTime(date.getTime() + (365*24*60*60*1000));
+                    let expires = "expires="+ date.toUTCString();
+                    document.cookie = "bx24_user_id=" + id + ";" + expires + ";path=/";
+                    document.cookie = "bx24_api_token=" + token + ";" + expires + ";path=/";
+                    $("#main-view").show();
+                    setGeneralInformation()
+                    setRecommendedTasks()
+                    setSearchTasks("", false, false)
+                } else {
+                    login()
+                }
+            }
+        }
+
+        function getCalendarWeek(date) {
+            if (!(date instanceof Date)) date = new Date();
+            let nDay = (date.getDay() + 6) % 7;
+
+            date.setDate(date.getDate() - nDay + 3);
+
+            let n1stThursday = date.valueOf();
+
+            date.setMonth(0, 1);
+
+            if (date.getDay() !== 4) {
+                date.setMonth(0, 1 + ((4 - date.getDay()) + 7) % 7);
+            }
+            return 1 + Math.ceil((n1stThursday - date) / 604800000);
+        }
+
+        function getFirstDayOfWeek(d) {
+            let date = new Date(d);
+            let day = date.getDay();
+            let diff = date.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(date.setDate(diff));
+        }
+
+        function getLastDayOfWeek(d) {
+            return new Date(d.setDate(d.getDate() - d.getDay() + 5));
+        }
+
+        function setRecommendedTasks() {
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.list"
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("POST", url);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            let oneWeekAgo = new Date()
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 2 * 7)
+
+            let json = {
+                "filter" : {
+                    "RESPONSIBLE_ID" : getCookie("bx24_user_id"),
+                    ">CHANGED_DATE" : oneWeekAgo,
+                    "<CLOSED_DATE" : new Date(),
+                    "ORDER" : "CHANGED_DATE"
+                },
+                "order": {CHANGED_DATE:'asc'}
+            }
+            json = JSON.stringify(json)
+            xhttp.send(json);
+            xhttp.onload = function () {
+                let result = JSON.parse(this.responseText)
+                $('#taskRec').empty()
+                for(task of result.result.tasks) {
+                    taskItem = "<li id='rec#" + task.id + "'> #" + task.id + " "+ task.title + "</li>"
+                    $('#taskRec').append(taskItem);
+                }
+            }
+        }
+
+        function setSearchTasks(query, onlyExecutor, onlyActive) {
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.list"
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("POST", url);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+
+            let json = {
+                "filter" : {
+                    "TITLE" : "%" + query + "%"
+                },
+                "order": {CHANGED_DATE:'desc'}
+            }
+            if (onlyExecutor) {
+                json.filter.RESPONSIBLE_ID = getCookie("bx24_user_id")
+            }
+            if (onlyActive) {
+                json.filter["!REAL_STATUS"] = 5
+            }
+            json = JSON.stringify(json)
+            xhttp.send(json);
+            xhttp.onload = function () {
+                let result = JSON.parse(this.responseText)
+                $('#taskSearchResults').empty()
+                for(task of result.result.tasks) {
+                    taskItem = "<li id='se#" + task.id + "'> #" + task.id + " "+ task.title + "</li>"
+                    $('#taskSearchResults').append(taskItem);
+                }
+            }
+        }
+    </script>
+    <style>
+        .border-input {
+            border: 3px solid deepskyblue;
+            border-radius: 7px;
+        }
+        .border-input:focus {
+            outline-width: 0;
+        }
+        .login-button {
+            color: white;
+            background-color: deepskyblue;
+            border: 3px solid transparent;
+            border-radius: 70px;
+        }
+
+        .time-list {
+            border: 2px solid lightgray;
+            border-radius: 7px;
+            padding: 10px 10px;
+            overflow:hidden;
+            overflow-y: scroll;
+            max-height: 300px;
+            height: 300px;
+            flex: 0 0 300px;
+        }
+
+        .time-list li {
+            margin: 5px 0px;
+            background-color: royalblue;
+            list-style: none;
+            border-radius: 7px;
+            border: 2px solid transparent;
+            color: white;
+            padding: 10px 10px;
+            font-size: 90%;
+
+        }
+
+        .time-list li:hover {
+            cursor: pointer;
+            background-color: steelblue;
+        }
+        .task-time {
+
+        }
+
+        .time-list-col {
+            width: 20%;
+            max-width: 20%;
+            flex: 0 0 20%;
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: deepskyblue;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: dodgerblue;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: cornflowerblue;
+        }
+
+        #calendarWeek {
+            color: mediumblue;
+        }
+
+        #bx24display_name {
+            color: darkblue;
+        }
+
+        #taskSearch {
+
+        }
+
+        #taskSearchId {
+            border: 1px solid lightskyblue;
+            border-radius: 5px;
+            padding: 1% 2%;
+            font-size: 100%;
+        }
+
+        #taskSearchResults li {
+            color: darkblue;
+            margin: 5px 0px;
+            list-style: none;
+            border-radius: 7px;
+            border: 1px solid dodgerblue;
+            padding: 7px 7px;
+            font-size: 90%;
+        }
+        #taskSearchResults {
+            border: 1px solid lightgray;
+            border-radius: 7px;
+            padding: 10px 10px;
+            overflow-y: scroll;
+            max-height: 200px;
+            height: 200px;
+        }
+
+        #taskRec li {
+            color: darkblue;
+            margin: 5px 0px;
+            list-style: none;
+            border-radius: 7px;
+            border: 1px solid dodgerblue;
+            padding: 7px 7px;
+            font-size: 90%;
+        }
+        #taskRec {
+            border: 1px solid lightgray;
+            border-radius: 7px;
+            padding: 10px 10px;
+            overflow-y: scroll;
+            max-height: 200px;
+            height: 200px;
+        }
+
+        #taskRec li:hover {
+            cursor: pointer;
+            color: white;
+            background-color: steelblue;
+        }
+
+        #taskSearchResults li:hover {
+            cursor: pointer;
+            color: white;
+            background-color: steelblue;
+        }
+
+        #next-week-button {
+            border: none;
+            outline: none;
+            font-size: 40px;
+            background-color: transparent;
+            color: mediumblue;
+        }
+
+        #before-week-button {
+            border: none;
+            outline: none;
+            font-size: 40px;
+            background-color: transparent;
+            color: mediumblue;
+        }
+
+        #before-week-button:hover {
+            border: none;
+            outline: none;
+            font-size: 40px;
+            background-color: transparent;
+            color: dodgerblue;
+        }
+
+        #next-week-button:hover {
+            border: none;
+            outline: none;
+            font-size: 40px;
+            background-color: transparent;
+            color: dodgerblue;
+        }
+    </style>
+</head>
+<script>
+
+</script>
+<body>
+<div id="login" title="Login" class="container login-prompt">
+    <form id="lf" action="#" onsubmit="loginSubmit()">
+    <label for="userId" class="my-1">Benutzer-ID</label>
+    <input type="text" id="userId" class="text-dark border-input my-1">
+    <label for="token" class="my-1">API-Schlüssel</label>
+    <input type="text" id="token" class="text-dark border-input my-1">
+    <input type="submit" value="Einloggen" id="submit" class="mt-3 login-button py-1 px-2 fw-bold">
+    </form>
+</div>
+<div id="main-view" class="container-fluid">
+    <h2 align="center" class="my-4" style="color: cornflowerblue"><img src="logo-bx24-en.png" class="w-25"> ZAE</h2>
+    <hr>
+    <h3 class="row text-end me-3">
+        <div id="bx24display_name">bx24display_name</div>
+    </h3>
+    <div class="row justify-content-center my-3">
+    <button class="col-1" id="before-week-button"><</button>
+    <h2 id="calendarWeek" class="col-4 my-3 text-center">Kalendarwoche 1 01.01.2002-07.01.2022</h2>
+    <button class="col-1" id="next-week-button">></button>
+    </div>
+    <div class="row justify-content-center">
+        <div class="time-list-col">
+            <p>Montag</p>
+            <ul class="time-list">
+                <li class="row"><div class="taskId fs-6">Aufgabe #5790</div><div class="taskTitle">c.wilhelm- WG: [ELO] WG: NeoFinder Update anbieten <div class="task-time text-end">08:00-08:45 | 30m</div></li>
+                <li>Example2</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+                <li>Example3</li>
+
+            </ul>
+
+        </div>
+        <div class="time-list-col">
+            <p>Dienstag</p>
+            <ul class="time-list">
+                <li>Example</li>
+            </ul>
+        </div>
+        <div class="time-list-col">
+            <p>Mittwoch</p>
+            <ul class="time-list">
+                <li>Example</li>
+            </ul>
+        </div>
+        <div class="time-list-col">
+            <p>Donnerstag</p>
+            <ul class="time-list">
+                <li>Example</li>
+            </ul>
+        </div>
+        <div class="time-list-col">
+            <p>Freitag</p>
+            <ul class="time-list">
+                <li>Example</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="row text-start justify-content-start">
+        <div class="row">
+            <h2 class="my-2 col-5">Vorschläge</h2>
+            <form id="taskSearch" class="my-2 ms-4 col-6 text-start" action="#">
+                <input type="text" id="taskSearchId" placeholder="Nach einer Aufgabe suchen.." maxlength="50" size="50">
+                <label for="taskSearchOnlyActive" class="ms-2 me-1">Aktiv</label>
+                <input type="checkbox" id="taskSearchOnlyActive">
+                <label for="executorOnly" class="ms-2 me-1">Ausführender</label>
+                <input type="checkbox" id="executorOnly">
+            </form>
+        </div>
+
+        <div class="col-5 mx-1">
+            <ul id="taskRec">
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+            </ul>
+        </div>
+        <div class="col-6 mx-2">
+            <ul id="taskSearchResults">
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+                <li>Example</li>
+            </ul>
+        </div>
+
+
+
+    </div>
+
+    </div>
+
+</body>
+</html>
