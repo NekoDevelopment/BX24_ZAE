@@ -11,39 +11,139 @@
     <script src="js/CookieGetter.js"></script>
     <link rel="icon" href="bitrix24logo.jpg">
     <script>
-        var tickets = []
-        var counter = 0
-        var limit = 1000
+        let times = {}
+        let tasks = {}
         function nextWeek(current) {
-
+            //TODO skip to next week
         }
 
         function beforeWeek(current) {
-
+            //TODO go to week before
         }
 
         function thisWeek(current) {
-            
-        }
-        function next(next) {
+            loadTimes(current)
+            $("#monday").empty()
+            $("#tuesday").empty()
+            $("#wednesday").empty()
+            $("#thursday").empty()
+            $("#friday").empty()
+            let taskIds = [1]
+            for (time of times) {
+                taskIds.push(time.TASK_ID)
+            }
             let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.list"
             let xhttp = new XMLHttpRequest();
-            xhttp.open("POST", url);
+            xhttp.open("POST", url, false);
             xhttp.setRequestHeader("Content-Type", "application/json");
             let json = {
-                "order": {CHANGED_DATE:'asc'},
-                "start" : next
+                "filter" : {
+                    "ID" : taskIds,
+                },
+                "SELECT" : ["TITLE", "ID"]
             }
             json = JSON.stringify(json)
-            xhttp.send(json);
-            xhttp.onload = function () {
-                let result = JSON.parse(this.responseText)
-                for (ticket of result.result.tasks) {
-                    tickets.push(ticket)
-                }
-                counter = result.next;
-                limit = result.total;
+            xhttp.send(json)
+
+            let result = xhttp.responseText;
+            result = JSON.parse(result)
+            console.log(result)
+            for (let task of result.result.tasks) {
+                tasks[task.id] = task
             }
+            for (time of times) {
+                let date = new Date(time.CREATED_DATE)
+                let hour = 0
+                if (date.getHours() < 10) {
+                    hour = "0"+ date.getHours()
+                } else {
+                    hour = date.getHours()
+                }
+                let mins = "0"
+                if (date.getMinutes().toString().length === 1) {
+                    mins = "0" + date.getMinutes()
+                } else {
+                    mins = date.getMinutes().toString()
+                }
+
+                let minutesSpent = time.MINUTES
+                let ts = ""
+                ts = minutesSpent + "m"
+                let startTime = hour + ":" + mins
+
+                date = new Date(date.getTime() + minutesSpent*60000);
+                hour = 0
+                if (date.getHours() < 10) {
+                    hour = "0"+ date.getHours()
+                } else {
+                    hour = date.getHours()
+                }
+                mins = "0"
+                if (date.getMinutes().toString().length === 1) {
+                    mins = "0" + date.getMinutes()
+                } else {
+                    mins = date.getMinutes().toString()
+                }
+                let endTime = hour + ":" + mins
+                console.log(tasks[time.TASK_ID])
+                let item = '<li class="row" id="'+ time.ID +'"><div class="taskId fs-6">Aufgabe #' + time.TASK_ID +'</div><div class="taskTitle">'+ tasks[time.TASK_ID].title +' <div class="task-time text-end">' + startTime  + '-'+ endTime +' | ' + ts + '</div></li>\n'
+                if (date.getDay() === 1) {
+                    $("#monday").append(item)
+                } else if(date.getDay() === 2) {
+                    $("#tuesday").append(item)
+                } else if(date.getDay() === 3) {
+                    $("#wednesday").append(item)
+                } else if(date.getDay() === 4) {
+                    $("#thursday").append(item)
+                } else if(date.getDay() === 5) {
+                    $("#friday").append(item)
+                }
+
+            }
+        }
+        function loadTimes(start) {
+                //TODO Load all times not max 50
+                start = new Date(start)
+                start.setDate(start.getDate() - 1)
+                times = []
+                let userId = getCookie("bx24_user_id")
+                let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/task.elapseditem.getlist"
+                let xhttp = new XMLHttpRequest();
+                xhttp.open("POST", url, false);
+                xhttp.setRequestHeader("Content-Type", "application/json");
+                let json = [{'CREATED_DATE': 'asc'}, {'USER_ID': userId, ">=CREATED_DATE" : start}]
+                json = JSON.stringify(json)
+                xhttp.send(json)
+                let result = xhttp.responseText;
+                result = JSON.parse(result)
+                times = times.concat(result.result)
+                console.log(times)
+        }
+
+        function addTime(taskId) {
+
+        }
+
+        function removeTime(taskId, timeId) {
+
+
+        }
+
+        function quickAdd() {
+
+        }
+
+        function editTime() {
+
+        }
+        function logout() {
+            document.cookie = "bx24_user_id" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            document.cookie = "bx24_api_token" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            window.location.reload()
+        }
+
+        function generateAndDownloadReport() {
+
         }
         function setGeneralInformation() {
             thisWeek()
@@ -78,6 +178,10 @@
                 let onlyExecutor = document.getElementById("executorOnly").checked
                 setSearchTasks(query, onlyExecutor, onlyActive)
             });
+
+            $('#main-view').on('click','li', function(event){
+                console.log("lol");
+            });
         })
         function validate() {
             let token = getCookie("bx24_api_token");
@@ -87,10 +191,9 @@
             xhttp.open("GET", url)
             xhttp.setRequestHeader("Content-Type", "application/json")
             xhttp.send();
-            xhttp.onreadystatechange = function () {
+            xhttp.onloadend = function () {
                 let valid = this.status !== 401
                 if(valid === false) {
-
                     document.cookie = "bx24_user_id" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
                     document.cookie = "bx24_api_token" +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
                     login()
@@ -99,12 +202,14 @@
                     setGeneralInformation();
                     setRecommendedTasks()
                     setSearchTasks("", false, false)
+                    thisWeek(getFirstDayOfWeek(new Date()))
                 }
             }
         }
         function login() {
             $("#login").dialog({
                 show : true,
+                draggable : false
             })
         }
         function loginSubmit() {
@@ -128,6 +233,7 @@
                     setGeneralInformation()
                     setRecommendedTasks()
                     setSearchTasks("", false, false)
+                    thisWeek(getFirstDayOfWeek(new Date()))
                 } else {
                     login()
                 }
@@ -198,7 +304,7 @@
 
             let json = {
                 "filter" : {
-                    "TITLE" : "%" + query + "%"
+                    "TITLE" : "%" + query + "%",
                 },
                 "order": {CHANGED_DATE:'desc'}
             }
@@ -224,6 +330,10 @@
         .border-input {
             border: 3px solid deepskyblue;
             border-radius: 7px;
+        }
+        .ui-dialog-titlebar {
+            background-color: white;
+            border: none;
         }
         .border-input:focus {
             outline-width: 0;
@@ -256,6 +366,11 @@
             padding: 10px 10px;
             font-size: 90%;
 
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .time-list li:hover {
@@ -406,6 +521,7 @@
     <h3 class="row text-end me-3">
         <div id="bx24display_name">bx24display_name</div>
     </h3>
+    <h5 class="text-end me-3 row" onclick="logout()"><a href="#" class="text-decoration-none">Logout</a></h5>
     <div class="row justify-content-center my-3">
     <button class="col-1" id="before-week-button"><</button>
     <h2 id="calendarWeek" class="col-4 my-3 text-center">Kalendarwoche 1 01.01.2002-07.01.2022</h2>
@@ -414,7 +530,7 @@
     <div class="row justify-content-center">
         <div class="time-list-col">
             <p>Montag</p>
-            <ul class="time-list">
+            <ul class="time-list" id="monday">
                 <li class="row"><div class="taskId fs-6">Aufgabe #5790</div><div class="taskTitle">c.wilhelm- WG: [ELO] WG: NeoFinder Update anbieten <div class="task-time text-end">08:00-08:45 | 30m</div></li>
                 <li>Example2</li>
                 <li>Example3</li>
@@ -439,25 +555,25 @@
         </div>
         <div class="time-list-col">
             <p>Dienstag</p>
-            <ul class="time-list">
+            <ul class="time-list" id="tuesday">
                 <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
             <p>Mittwoch</p>
-            <ul class="time-list">
+            <ul class="time-list" id="wednesday">
                 <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
             <p>Donnerstag</p>
-            <ul class="time-list">
+            <ul class="time-list" id="thursday">
                 <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
             <p>Freitag</p>
-            <ul class="time-list">
+            <ul class="time-list" id="friday">
                 <li>Example</li>
             </ul>
         </div>
