@@ -11,17 +11,40 @@
     <script src="js/CookieGetter.js"></script>
     <link rel="icon" href="bitrix24logo.jpg">
     <script>
-        let times = {}
+        let current
+        let times = []
         let tasks = {}
-        function nextWeek(current) {
-            //TODO skip to next week
+        let mondayTotal = 0
+        let tuesdayTotal = 0
+        let wednesdayTotal = 0
+        let thursdayTotal = 0
+        let fridayTotal = 0
+        function nextWeek() {
+            current = new Date(current)
+            current = current.setDate(current.getDate() + 7)
+            let start = getFirstDayOfWeek(current)
+            let end = getLastDayOfWeek(current)
+            document.getElementById("calendarWeek").innerHTML = "Kalendarwoche " + getCalendarWeek(current) + " | " + start.getDate() + "." + (start.getMonth()+1) + "." + start.getFullYear() + " - " + end.getDate() + "." + (end.getMonth()+1) + "." + end.getFullYear();
+            thisWeek()
         }
 
-        function beforeWeek(current) {
-            //TODO go to week before
+        function beforeWeek() {
+            current = new Date(current)
+            current = current.setDate(current.getDate() - 7)
+            let start = getFirstDayOfWeek(current)
+            let end = getLastDayOfWeek(current)
+            console.log(start)
+            console.log(end)
+            document.getElementById("calendarWeek").innerHTML = "Kalendarwoche " + getCalendarWeek(current) + " | " + start.getDate() + "." + (start.getMonth()+1) + "." + start.getFullYear() + " - " + end.getDate() + "." + (end.getMonth()+1) + "." + end.getFullYear();
+            thisWeek()
         }
 
-        function thisWeek(current) {
+        function thisWeek() {
+            mondayTotal = 0
+            tuesdayTotal = 0
+            wednesdayTotal = 0
+            thursdayTotal = 0
+            fridayTotal = 0
             loadTimes(current)
             $("#monday").empty()
             $("#tuesday").empty()
@@ -89,39 +112,92 @@
                 let item = '<li class="row" id="'+ time.ID +'"><div class="taskId fs-6">Aufgabe #' + time.TASK_ID +'</div><div class="taskTitle">'+ tasks[time.TASK_ID].title +' <div class="task-time text-end">' + startTime  + '-'+ endTime +' | ' + ts + '</div></li>\n'
                 if (date.getDay() === 1) {
                     $("#monday").append(item)
+                    mondayTotal = mondayTotal + parseInt(time.MINUTES)
                 } else if(date.getDay() === 2) {
                     $("#tuesday").append(item)
+                    tuesdayTotal = tuesdayTotal + parseInt(time.MINUTES)
                 } else if(date.getDay() === 3) {
                     $("#wednesday").append(item)
+                    wednesdayTotal = wednesdayTotal + parseInt(time.MINUTES)
                 } else if(date.getDay() === 4) {
                     $("#thursday").append(item)
+                    thursdayTotal = thursdayTotal + parseInt(time.MINUTES)
                 } else if(date.getDay() === 5) {
                     $("#friday").append(item)
+                    fridayTotal = fridayTotal + parseInt(time.MINUTES)
                 }
 
             }
+            document.getElementById("mondayTitle").innerHTML = "Montag - " + (mondayTotal / 60).toFixed(2) + "h"
+            document.getElementById("tuesdayTitle").innerHTML = "Dienstag - " + (tuesdayTotal / 60).toFixed(2) + "h"
+            document.getElementById("wednesdayTitle").innerHTML = "Mittwoch - " + (wednesdayTotal / 60).toFixed(2) + "h"
+            document.getElementById("thursdayTitle").innerHTML = "Donnerstag - " + (thursdayTotal / 60).toFixed(2) + "h"
+            document.getElementById("fridayTitle").innerHTML = "Freitag - " + (fridayTotal / 60).toFixed(2) + "h"
         }
-        function loadTimes(start) {
-                //TODO Load all times not max 50
-                start = new Date(start)
-                start.setDate(start.getDate() - 1)
+        function loadTimes() {
+                times = []
+                let start = getFirstDayOfWeek(current)
+                let end = getLastDayOfWeek(current)
+                console.log(start)
+                console.log(end)
                 times = []
                 let userId = getCookie("bx24_user_id")
                 let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/task.elapseditem.getlist"
                 let xhttp = new XMLHttpRequest();
                 xhttp.open("POST", url, false);
                 xhttp.setRequestHeader("Content-Type", "application/json");
-                let json = [{'CREATED_DATE': 'asc'}, {'USER_ID': userId, ">=CREATED_DATE" : start}]
+                let json = [{'CREATED_DATE': 'asc'}, {'USER_ID': userId, ">=CREATED_DATE" : start, "<=CREATED_DATE" : end}]
                 json = JSON.stringify(json)
                 xhttp.send(json)
                 let result = xhttp.responseText;
                 result = JSON.parse(result)
                 times = times.concat(result.result)
-                console.log(times)
+                if (result.total > 50) {
+                let next = 2
+                let limit = result.total
+                console.log(limit)
+                console.log(Object.keys(times).length)
+                while (Object.keys(times).length < limit) {
+                    start = new Date(start)
+                    start.setDate(start.getDate() - 1)
+                    let userId = getCookie("bx24_user_id")
+                    let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/task.elapseditem.getlist"
+                    let xhttp = new XMLHttpRequest();
+                    xhttp.open("POST", url, false);
+                    xhttp.setRequestHeader("Content-Type", "application/json");
+                    let json = [{'CREATED_DATE': 'asc'}, {'USER_ID': userId, ">=CREATED_DATE" : start, "<=CREATED_DATE" : end}, ["*"], {"NAV_PARAMS" : {"nPageSize" : 50, "iNumPage" : next}}]
+                    json = JSON.stringify(json)
+                    xhttp.send(json)
+                    let result = xhttp.responseText;
+                    result = JSON.parse(result)
+                    times = times.concat(result.result)
+                    next = next + 1
+                }
+            }
+        }
+        function roundToNearest15(datetime) {
+            const minutes = 15;
+            const ms = 1000 * 60 * minutes;
+            return new Date(Math.round(datetime.getTime() / ms) * ms);
         }
 
         function addTime(taskId) {
-
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.get"
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("POST", url, false);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            let json = {"taskId" : taskId, "select" : ["ID", "TITLE", "UF_CRM_TASK"]}
+            json = JSON.stringify(json)
+            xhttp.send(json)
+            let result = xhttp.responseText;
+            result = JSON.parse(result)
+            console.log(result)
+            let now = new Date();
+            now = roundToNearest15(new Date(now.setMinutes(now.getMinutes() - now.getTimezoneOffset())));
+            document.getElementById("create-window-task-name").innerHTML = result.result.task.title
+            document.getElementById("create-window-datetime").value = now.toISOString().slice(0,16);
+            $("#window-blocker").show()
+            $("#create-window").show()
         }
 
         function removeTime(taskId, timeId) {
@@ -133,7 +209,7 @@
 
         }
 
-        function editTime() {
+        function editTime(timeId, taskId) {
 
         }
         function logout() {
@@ -157,10 +233,12 @@
                 document.getElementById("bx24display_name").innerHTML = result.result[0].NAME + " "+ result.result[0].LAST_NAME
                 let firstDayOfWeek = getFirstDayOfWeek(new Date())
                 let lastDayOfWeek = getLastDayOfWeek(new Date())
-                document.getElementById("calendarWeek").innerHTML = "Kalendarwoche " + getCalendarWeek(new Date()) + " | " + firstDayOfWeek.getDay() + "." + (firstDayOfWeek.getMonth()+1) + "." + firstDayOfWeek.getFullYear() + " - " + lastDayOfWeek.getDay() + "." + (lastDayOfWeek.getMonth()+1) + "." + lastDayOfWeek.getFullYear();
+                document.getElementById("calendarWeek").innerHTML = "Kalendarwoche " + getCalendarWeek(new Date()) + " | " + firstDayOfWeek.getDate() + "." + (firstDayOfWeek.getMonth()+1) + "." + firstDayOfWeek.getFullYear() + " - " + lastDayOfWeek.getDate() + "." + (lastDayOfWeek.getMonth()+1) + "." + lastDayOfWeek.getFullYear();
             }
         }
         $(document).ready(function () {
+            $("#window-blocker").hide()
+            $("#create-window").hide()
             $("#main-view").hide();
             $.fn.button.noConflict()
             let apiToken = getCookie("bx24_api_token");
@@ -180,10 +258,28 @@
             });
 
             $('#main-view').on('click','li', function(event){
-                console.log("lol");
+                let id = $(this).attr("id")
+                if (id.includes("rec#")) {
+                    id = id.replace("rec#", "")
+                    addTime(id)
+                } else if(id.includes("se#")) {
+                    id = id.replace("se#", "")
+                    addTime(id)
+                } else {
+                    let taskId = document.getElementById(id).getElementsByClassName("taskId")[0].innerHTML.replace("Aufgabe #", "")
+                    editTime(id, taskId)
+                }
             });
+            $("#create-window-abort-button").click(function () {
+                $("#create-window").hide()
+                $("#window-blocker").hide()
+            })
         })
+
+
+
         function validate() {
+
             let token = getCookie("bx24_api_token");
             let id = getCookie("bx24_user_id");
             var url = "https://crm.cms-sudhaus.de/rest/11/" + token + "/user.get.json?ID=" + id
@@ -199,10 +295,13 @@
                     login()
                 } else {
                     $("#main-view").show();
+                    $(".loader").hide();
                     setGeneralInformation();
                     setRecommendedTasks()
                     setSearchTasks("", false, false)
-                    thisWeek(getFirstDayOfWeek(new Date()))
+                    current = getFirstDayOfWeek(new Date())
+                    thisWeek()
+
                 }
             }
         }
@@ -230,10 +329,12 @@
                     document.cookie = "bx24_user_id=" + id + ";" + expires + ";path=/";
                     document.cookie = "bx24_api_token=" + token + ";" + expires + ";path=/";
                     $("#main-view").show();
-                    setGeneralInformation()
+                    $(".loader").hide();
+                    setGeneralInformation();
                     setRecommendedTasks()
                     setSearchTasks("", false, false)
-                    thisWeek(getFirstDayOfWeek(new Date()))
+                    current = getFirstDayOfWeek(new Date())
+                    thisWeek()
                 } else {
                     login()
                 }
@@ -241,7 +342,7 @@
         }
 
         function getCalendarWeek(date) {
-            if (!(date instanceof Date)) date = new Date();
+            date = new Date(date)
             let nDay = (date.getDay() + 6) % 7;
 
             date.setDate(date.getDate() - nDay + 3);
@@ -260,11 +361,14 @@
             let date = new Date(d);
             let day = date.getDay();
             let diff = date.getDate() - day + (day === 0 ? -6 : 1);
-            return new Date(date.setDate(diff));
+            let res = new Date(date.setDate(diff));
+            return new Date(res.toDateString())
         }
 
         function getLastDayOfWeek(d) {
-            return new Date(d.setDate(d.getDate() - d.getDay() + 5));
+            d = new Date(d);
+            let res = new Date(d.setDate(d.getDate() - d.getDay() + 6));
+            return new Date(res.toDateString())
         }
 
         function setRecommendedTasks() {
@@ -367,11 +471,24 @@
 
         }
 
+        .loader {
+            display: block;
+            border: 16px solid #f3f3f3; /* Light grey */
+            border-top: 16px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            position: absolute;
+            top: 45%;
+            left: 47%;
+            transform: translate(-50%, -50%);
+            animation: spin 2s linear infinite;
+        }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
         .time-list li:hover {
             cursor: pointer;
             background-color: steelblue;
@@ -499,12 +616,120 @@
             background-color: transparent;
             color: dodgerblue;
         }
+
+
+        #create-window {
+
+            display: block;
+            position: fixed;
+            left: 50%;
+            top: 25%;
+            background-color: white;
+            transform: translate(-50%, 5%);
+            border: 5px solid cornflowerblue;
+            border-radius: 7px;
+        }
+        #create-window-form-container {
+            padding: 3%;
+        }
+
+        #create-window-submit-button {
+            background-color: green;
+            border-radius: 7px;
+            border: 1px solid white;
+            color: white;
+            padding: 1% 4%;
+
+        }
+
+        #create-window-abort-button {
+            background-color: red;
+            border-radius: 7px;
+            border: 1px solid white;
+            color: white;
+            padding: 1% 4%;
+        }
+
+        #create-window-comment {
+            border-radius: 7px;
+            border: 2px solid cornflowerblue;
+            color: white;
+        }
+
+        #create-window-datetime {
+            border-radius: 7px;
+            border: 2px solid cornflowerblue;
+            color: black;
+        }
+
+        #create-window-minute-select {
+            border-radius: 7px;
+            border: 2px solid cornflowerblue;
+            color: black;
+        }
+
+        #create-window-hour-select {
+            border-radius: 7px;
+            border: 2px solid cornflowerblue;
+            color: black;
+        }
+        #window-blocker {
+            top: 0;
+            display: block;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.25);
+        }
+
     </style>
 </head>
 <script>
 
 </script>
-<body>
+<body class="">
+<div class="loader">
+
+</div>
+<div id="window-blocker">
+        <form action="#" id="create-window" class="justify-content-center">
+            <h4 class="row justify-content-center mt-2">Zeit erfassen</h4>
+            <hr>
+            <p id="create-window-task-name" class="row mx-2 mt-1">Aufgabe #0001 - Drucker Bernd reparieren</p>
+            <div class="row mx-2 mt-1">
+                <input type="datetime-local" id="create-window-datetime" class="col-3" required >
+                <div class="col-3">
+                    <select id="create-window-hour-select">
+                        <option value="0">0h</option>
+                        <option value="1">1h</option>
+                        <option value="2">2h</option>
+                        <option value="3">3h</option>
+                        <option value="4">4h</option>
+                        <option value="5">5h</option>
+                        <option value="6">6h</option>
+                        <option value="7">7h</option>
+                        <option value="8">8h</option>
+                    </select>
+                    <select id="create-window-minute-select">
+                        <option value="0">0m</option>
+                        <option value="15" selected="selected">15m</option>
+                        <option value="30">30m</option>
+                        <option value="45">45m</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <textarea id="create-window-comment" class="mx-2 mt-1 row"  required placeholder="Tätigkeitsbeschreibung.." rows="5" cols="100%"></textarea>
+            <div class="row mx-2 mt-3 mb-1">
+                <button type="submit" id="create-window-submit-button" class="col-3">Erfassen</button>
+                <div class="col-6"></div>
+                <button type="button" onclick="" id="create-window-abort-button" class="col-3">Abbrechen</button>
+            </div>
+
+        </form>
+</div>
+
 <div id="login" title="Login" class="container login-prompt">
     <form id="lf" action="#" onsubmit="loginSubmit()">
     <label for="userId" class="my-1">Benutzer-ID</label>
@@ -522,58 +747,35 @@
     </h3>
     <h5 class="text-end me-3 row" onclick="logout()"><a href="#" class="text-decoration-none">Logout</a></h5>
     <div class="row justify-content-center my-3">
-    <button class="col-1" id="before-week-button"><</button>
+    <button class="col-1" id="before-week-button" onclick="beforeWeek()"><</button>
     <h2 id="calendarWeek" class="col-4 my-3 text-center">Kalendarwoche 1 01.01.2002-07.01.2022</h2>
-    <button class="col-1" id="next-week-button">></button>
+    <button class="col-1" id="next-week-button" onclick="nextWeek()">></button>
     </div>
     <div class="row justify-content-center">
         <div class="time-list-col">
-            <p>Montag</p>
+            <p id="mondayTitle">Montag 0h</p>
             <ul class="time-list" id="monday">
-                <li class="row"><div class="taskId fs-6">Aufgabe #5790</div><div class="taskTitle">c.wilhelm- WG: [ELO] WG: NeoFinder Update anbieten <div class="task-time text-end">08:00-08:45 | 30m</div></li>
-                <li>Example2</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-                <li>Example3</li>
-
             </ul>
 
         </div>
         <div class="time-list-col">
-            <p>Dienstag</p>
+            <p id="tuesdayTitle">Dienstag</p>
             <ul class="time-list" id="tuesday">
-                <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
-            <p>Mittwoch</p>
+            <p id="wednesdayTitle">Mittwoch</p>
             <ul class="time-list" id="wednesday">
-                <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
-            <p>Donnerstag</p>
+            <p id="thursdayTitle">Donnerstag</p>
             <ul class="time-list" id="thursday">
-                <li>Example</li>
             </ul>
         </div>
         <div class="time-list-col">
-            <p>Freitag</p>
+            <p id="fridayTitle">Freitag</p>
             <ul class="time-list" id="friday">
-                <li>Example</li>
             </ul>
         </div>
     </div>
@@ -592,20 +794,10 @@
 
         <div class="col-5 mx-1">
             <ul id="taskRec">
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
             </ul>
         </div>
         <div class="col-6 mx-2">
             <ul id="taskSearchResults">
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
-                <li>Example</li>
             </ul>
         </div>
 
