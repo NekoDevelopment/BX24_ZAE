@@ -12,6 +12,7 @@
     <link rel="icon" href="bitrix24logo.jpg">
     <script>
         let current
+        let currentlyCreating
         let times = []
         let tasks = {}
         let mondayTotal = 0
@@ -182,6 +183,7 @@
         }
 
         function addTime(taskId) {
+            currentlyCreating = taskId
             let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.get"
             let xhttp = new XMLHttpRequest();
             xhttp.open("POST", url, false);
@@ -192,14 +194,35 @@
             let result = xhttp.responseText;
             result = JSON.parse(result)
             console.log(result)
-            let now = new Date();
-            now = roundToNearest15(new Date(now.setMinutes(now.getMinutes() - now.getTimezoneOffset())));
+            let latest = getLatestTime()
+            let latestEnd = new Date(latest.CREATED_DATE)
+            var x = (new Date()).getTimezoneOffset() * 60000;
+            latestEnd = new Date(latestEnd.setTime(latestEnd.getTime() + latest.MINUTES * 60000) - x)
+            if(new Date().getDate() === latestEnd.getDate()) {
+                document.getElementById("create-window-datetime").value = latestEnd.toISOString().slice(0,16);
+            } else {
+                let now = new Date(new Date().setTime(new Date().getTime()) - x)
+                document.getElementById("create-window-datetime").value = now.toISOString().slice(0,16);
+            }
             document.getElementById("create-window-task-name").innerHTML = result.result.task.title
-            document.getElementById("create-window-datetime").value = now.toISOString().slice(0,16);
             $("#window-blocker").show()
             $("#create-window").show()
         }
+        function getLatestTime() {
+            let userId = getCookie("bx24_user_id")
+            let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/task.elapseditem.getlist"
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("POST", url, false);
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            let json = [{'ID': 'desc'}, {'USER_ID': userId}, ["MINUTES", "ID", "CREATED_DATE"], {"NAV_PARAMS" : {"nPageSize" : 1, "iNumPage" : 1}}]
+            json = JSON.stringify(json)
+            xhttp.send(json)
+            let result = xhttp.responseText;
+            result = JSON.parse(result)
+            console.log(result.result[0])
+            return result.result[0]
 
+        }
         function removeTime(taskId, timeId) {
 
 
@@ -254,15 +277,18 @@
                 let query = document.getElementById("taskSearchId").value;
                 let onlyActive = document.getElementById("taskSearchOnlyActive").checked
                 let onlyExecutor = document.getElementById("executorOnly").checked
-                setSearchTasks(query, onlyExecutor, onlyActive)
+                let onlyMember = document.getElementById("memberOnly").checked
+                setSearchTasks(query, onlyExecutor, onlyActive, onlyMember)
             });
 
             $('#main-view').on('click','li', function(event){
                 let id = $(this).attr("id")
                 if (id.includes("rec#")) {
+                    document.getElementById("create-window-comment").value = ""
                     id = id.replace("rec#", "")
                     addTime(id)
                 } else if(id.includes("se#")) {
+                    document.getElementById("create-window-comment").value = ""
                     id = id.replace("se#", "")
                     addTime(id)
                 } else {
@@ -274,8 +300,39 @@
                 $("#create-window").hide()
                 $("#window-blocker").hide()
             })
+
+            $("#create-window-submit-button").click(function () {
+                saveNewTime()
+            })
         })
 
+        function saveNewTime() {
+            let datetime = document.getElementById("create-window-datetime").value
+            let minutes = document.getElementById("create-window-minute-select").value
+            let hours = document.getElementById("create-window-hour-select").value
+            let comment = document.getElementById("create-window-comment").value
+            let task = currentlyCreating
+            datetime = new Date(datetime)
+            if(hours === 0 && minutes === 0) {
+                alert("Bitte erfasse mindestens 15 Minuten")
+            } else {
+                let seconds = parseInt(minutes) * 60
+                seconds = seconds + (parseInt(hours) * 60 * 60)
+                let json = [task, {SECONDS: seconds, COMMENT_TEXT: comment, CREATED_DATE: datetime, USER_ID: getCookie("bx24_user_id")}]
+                let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/task.elapseditem.add"
+                let xhttp = new XMLHttpRequest();
+                xhttp.open("POST", url, false);
+                xhttp.setRequestHeader("Content-Type", "application/json");
+                json = JSON.stringify(json)
+                xhttp.send(json)
+                let result = xhttp.responseText
+                $("#window-blocker").hide()
+                $("#create-window").hide()
+                thisWeek()
+            }
+
+
+        }
 
 
         function validate() {
@@ -298,7 +355,7 @@
                     $(".loader").hide();
                     setGeneralInformation();
                     setRecommendedTasks()
-                    setSearchTasks("", false, false)
+                    setSearchTasks("", false, false, false)
                     current = getFirstDayOfWeek(new Date())
                     thisWeek()
 
@@ -332,7 +389,7 @@
                     $(".loader").hide();
                     setGeneralInformation();
                     setRecommendedTasks()
-                    setSearchTasks("", false, false)
+                    setSearchTasks("", false, false, false)
                     current = getFirstDayOfWeek(new Date())
                     thisWeek()
                 } else {
@@ -399,7 +456,7 @@
             }
         }
 
-        function setSearchTasks(query, onlyExecutor, onlyActive) {
+        function setSearchTasks(query, onlyExecutor, onlyActive, onlyMember) {
             let url = "https://crm.cms-sudhaus.de/rest/11/" + getCookie("bx24_api_token") + "/tasks.task.list"
             let xhttp = new XMLHttpRequest();
             xhttp.open("POST", url);
@@ -413,6 +470,9 @@
             }
             if (onlyExecutor) {
                 json.filter.RESPONSIBLE_ID = getCookie("bx24_user_id")
+            }
+            if (onlyMember) {
+                json.filter.ACCOMPLICE = getCookie("bx24_user_id")
             }
             if (onlyActive) {
                 json.filter["!REAL_STATUS"] = 5
@@ -653,7 +713,6 @@
         #create-window-comment {
             border-radius: 7px;
             border: 2px solid cornflowerblue;
-            color: white;
         }
 
         #create-window-datetime {
@@ -787,8 +846,10 @@
                 <input type="text" id="taskSearchId" placeholder="Nach einer Aufgabe suchen.." maxlength="50" size="50">
                 <label for="taskSearchOnlyActive" class="ms-2 me-1">Aktiv</label>
                 <input type="checkbox" id="taskSearchOnlyActive">
-                <label for="executorOnly" class="ms-2 me-1">Ausführender</label>
+                <label for="executorOnly" class="ms-2 me-1">Verantwortlicher</label>
                 <input type="checkbox" id="executorOnly">
+                <label for="memberOnly" class="ms-2 me-1">Mitwirkender</label>
+                <input type="checkbox" id="memberOnly">
             </form>
         </div>
 
